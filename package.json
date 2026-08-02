@@ -1,0 +1,42 @@
+{
+  "name": "fantasy-installer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^32.0.1",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "build": {
+    "appId": "io.horodrigo.fantasymaphost",
+    "productName": "Neverending Fantasy Map Studio Host",
+    "files": [
+      "src/**/*",
+      "runtime/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Neverending Map Studio Host"
+    }
+  }
+}

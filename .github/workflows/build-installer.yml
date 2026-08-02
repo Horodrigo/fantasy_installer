@@ -1,0 +1,84 @@
+name: Build installer
+
+on:
+  repository_dispatch:
+    types: [source-updated]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Ref do neverending_story"
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout installer repo
+        uses: actions/checkout@v4
+
+      - name: Resolve source ref
+        id: source
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "repository_dispatch") {
+            "ref=${{ github.event.client_payload.source_sha }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "version=${{ github.event.client_payload.source_sha }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            "ref=${{ github.event.inputs.source_ref }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "version=${{ github.event.inputs.source_ref }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Checkout source application
+        uses: actions/checkout@v4
+        with:
+          repository: Horodrigo/neverending_story
+          ref: ${{ steps.source.outputs.ref }}
+          path: source-app
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            source-app/package-lock.json
+
+      - name: Build source web app
+        shell: pwsh
+        run: |
+          Set-Location source-app
+          npm ci
+          npm run build
+
+      - name: Prepare runtime payload
+        shell: pwsh
+        run: |
+          if (Test-Path runtime\app\dist) { Remove-Item runtime\app\dist -Recurse -Force }
+          New-Item -ItemType Directory -Path runtime\app\dist | Out-Null
+          Copy-Item source-app\dist\* runtime\app\dist -Recurse -Force
+
+      - name: Install installer dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run package
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neverending-map-studio-installer
+          path: release/*.exe
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: installer-${{ github.run_number }}
+          name: Installer build #${{ github.run_number }}
+          body: |
+            Source ref: `${{ steps.source.outputs.version }}`
+          files: release/*.exe
