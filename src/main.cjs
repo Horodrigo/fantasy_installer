@@ -1,5 +1,6 @@
 const { app, BrowserWindow, shell } = require('electron')
 const { createServer } = require('node:http')
+const net = require('node:net')
 const fs = require('node:fs')
 const path = require('node:path')
 const { startSignalingServer } = require('./signaling.cjs')
@@ -10,6 +11,8 @@ const runtimeRoot = path.join(process.resourcesPath, 'runtime', 'app', 'dist')
 
 let webServer = null
 let signalingServer = null
+let activeWebPort = WEB_PORT
+let activeSignalingPort = SIGNALING_PORT
 
 function resolvePath(urlPath) {
   const sanitized = urlPath.split('?')[0]
@@ -17,7 +20,28 @@ function resolvePath(urlPath) {
   return path.join(runtimeRoot, route.startsWith('/') ? route.slice(1) : route)
 }
 
-function startWebServer() {
+function getAvailablePort(preferredPort) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer()
+    probe.once('error', (error) => {
+      if (error && error.code === 'EADDRINUSE') {
+        const fallbackProbe = net.createServer()
+        fallbackProbe.once('error', reject)
+        fallbackProbe.listen(0, '127.0.0.1', () => {
+          const { port } = fallbackProbe.address()
+          fallbackProbe.close(() => resolve(port))
+        })
+        return
+      }
+      reject(error)
+    })
+    probe.listen(preferredPort, '127.0.0.1', () => {
+      probe.close(() => resolve(preferredPort))
+    })
+  })
+}
+
+function startWebServer(port) {
   if (!fs.existsSync(runtimeRoot)) {
     throw new Error(`Dist não encontrado em ${runtimeRoot}`)
   }
@@ -48,7 +72,10 @@ function startWebServer() {
     })
   })
 
-  webServer.listen(WEB_PORT)
+  return new Promise((resolve, reject) => {
+    webServer.once('error', reject)
+    webServer.listen(port, '127.0.0.1', () => resolve())
+  })
 }
 
 function createWindow() {
@@ -61,7 +88,7 @@ function createWindow() {
     },
   })
 
-  const appUrl = `http://localhost:${WEB_PORT}/`
+  const appUrl = `http://localhost:${activeWebPort}/?signaling=ws://localhost:${activeSignalingPort}`
   const statusHtml = `
     <html>
       <body style="font-family:Segoe UI, sans-serif; background:#10141d; color:#e8dcc0; padding:24px">
@@ -69,7 +96,7 @@ function createWindow() {
         <p>Servidor local ativo.</p>
         <ul>
           <li>App: <a style="color:#e8a94a" href="${appUrl}">${appUrl}</a></li>
-          <li>Sinalização: ws://localhost:${SIGNALING_PORT}</li>
+          <li>Sinalização: ws://localhost:${activeSignalingPort}</li>
         </ul>
         <button id="open">Abrir aplicação no navegador</button>
         <script>
@@ -84,10 +111,18 @@ function createWindow() {
   void shell.openExternal(appUrl)
 }
 
-app.whenReady().then(() => {
-  signalingServer = startSignalingServer(SIGNALING_PORT)
-  startWebServer()
-  createWindow()
+app.whenReady().then(async () => {
+  try {
+    activeSignalingPort = await getAvailablePort(SIGNALING_PORT)
+    activeWebPort = await getAvailablePort(WEB_PORT)
+    signalingServer = await startSignalingServer(activeSignalingPort)
+    await startWebServer(activeWebPort)
+    createWindow()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Falha ao iniciar host local: ${message}`)
+    app.quit()
+  }
 })
 
 app.on('window-all-closed', () => {

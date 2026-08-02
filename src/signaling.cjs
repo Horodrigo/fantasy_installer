@@ -271,13 +271,19 @@ function startSignalingServer(port) {
     })
   })
 
-  server.listen(port)
-  return {
-    close: () => {
-      wss.close()
-      server.close()
-    },
-  }
+  return new Promise((resolve, reject) => {
+    server.once('error', (error) => {
+      reject(error)
+    })
+    server.listen(port, () => {
+      resolve({
+        close: () => {
+          wss.close()
+          server.close()
+        },
+      })
+    })
+  })
 }
 
 module.exports = { startSignalingServer }

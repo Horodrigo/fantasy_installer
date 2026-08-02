@@ -20,7 +20,8 @@
     "files": [
       "src/**/*",
       "runtime/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE"
     ],
     "directories": {
       "output": "release"
@@ -32,11 +33,12 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Neverending Map Studio Host"
+      "shortcutName": "Neverending Map Studio Host",
+      "license": "LICENSE"
     }
   }
 }
