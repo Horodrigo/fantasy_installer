@@ -19,9 +19,14 @@
     "productName": "Neverending Fantasy Map Studio Host",
     "files": [
       "src/**/*",
-      "runtime/**/*",
       "package.json",
       "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime/app/dist",
+        "to": "app-dist"
+      }
     ],
     "directories": {
       "output": "release"

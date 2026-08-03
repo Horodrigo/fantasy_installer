@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, shell, dialog } = require('electron')
 const { createServer } = require('node:http')
 const net = require('node:net')
 const fs = require('node:fs')
@@ -7,7 +7,12 @@ const { startSignalingServer } = require('./signaling.cjs')
 
 const WEB_PORT = Number(process.env.MAPSTUDIO_WEB_PORT || 4173)
 const SIGNALING_PORT = Number(process.env.SIGNALING_PORT || 8787)
-const runtimeRoot = path.join(process.resourcesPath, 'runtime', 'app', 'dist')
+
+// When packaged, runtime dist is placed outside the ASAR via extraResources
+// When running in dev, fall back to the local runtime/app/dist folder
+const runtimeRoot = app.isPackaged
+  ? path.join(process.resourcesPath, 'app-dist')
+  : path.join(__dirname, '..', 'runtime', 'app', 'dist')
 
 let webServer = null
 let signalingServer = null
@@ -121,6 +126,13 @@ app.whenReady().then(async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`Falha ao iniciar host local: ${message}`)
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Erro ao iniciar Neverending Map Studio',
+      message: 'Não foi possível iniciar o servidor local.',
+      detail: message,
+      buttons: ['Fechar'],
+    })
     app.quit()
   }
 })

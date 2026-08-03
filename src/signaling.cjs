@@ -275,7 +275,7 @@ function startSignalingServer(port) {
     server.once('error', (error) => {
       reject(error)
     })
-    server.listen(port, () => {
+    server.listen(port, '127.0.0.1', () => {
       resolve({
         close: () => {
           wss.close()
