@@ -74,8 +74,20 @@ function startSignalingServer(port) {
   }
 
   const server = createServer((req, res) => {
+    const corsHeaders = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET, OPTIONS',
+      'access-control-allow-headers': 'content-type',
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, corsHeaders)
+      res.end()
+      return
+    }
+
     if (req.url === '/health') {
-      res.writeHead(200, { 'content-type': 'application/json' })
+      res.writeHead(200, { ...corsHeaders, 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true }))
       return
     }
@@ -86,11 +98,11 @@ function startSignalingServer(port) {
           lobbies.push(getLobbyInfo(room))
         }
       }
-      res.writeHead(200, { 'content-type': 'application/json' })
+      res.writeHead(200, { ...corsHeaders, 'content-type': 'application/json' })
       res.end(JSON.stringify(lobbies))
       return
     }
-    res.writeHead(404)
+    res.writeHead(404, corsHeaders)
     res.end('Not found')
   })
 
