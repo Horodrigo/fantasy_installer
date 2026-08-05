@@ -46,6 +46,8 @@ function startSignalingServer(port) {
     if (!rooms.has(bookId)) {
       rooms.set(bookId, {
         bookId,
+        narratorName: 'Narrador',
+        bookName: 'Livro Sem Nome',
         inviteToken: randomToken('invite'),
         hostSecret: null,
         hostClientId: null,
@@ -53,15 +55,39 @@ function startSignalingServer(port) {
         acl: new Map(),
         players: new Map(),
         state: null,
+        createdAt: Date.now(),
       })
     }
     return rooms.get(bookId)
+  }
+
+  function getLobbyInfo(room) {
+    return {
+      id: room.bookId,
+      narratorName: room.narratorName,
+      bookName: room.bookName,
+      mapCount: 0,
+      playerCount: room.players.size,
+      createdAt: room.createdAt,
+      joinable: room.players.size < 10,
+    }
   }
 
   const server = createServer((req, res) => {
     if (req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true }))
+      return
+    }
+    if (req.url === '/api/lobbies' && req.method === 'GET') {
+      const lobbies = []
+      for (const room of rooms.values()) {
+        if (room.hostClientId && clients.get(room.hostClientId)) {
+          lobbies.push(getLobbyInfo(room))
+        }
+      }
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(lobbies))
       return
     }
     res.writeHead(404)
@@ -91,9 +117,15 @@ function startSignalingServer(port) {
 
       if (payload.type === 'narrator:open-room') {
         const room = ensureRoom(payload.bookId)
+        if (room.hostClientId && clients.get(room.hostClientId)) {
+          send(socket, { type: 'server:error', message: 'Este livro já está sendo narrado. Máximo 1 narrador por livro.' })
+          return
+        }
         room.hostClientId = clientId
         room.hostSecret = payload.hostSecret
         room.inviteToken = payload.inviteToken || room.inviteToken
+        room.narratorName = payload.narratorName || 'Narrador'
+        room.bookName = payload.bookName || 'Livro Sem Nome'
         client.role = 'narrator'
         client.bookId = payload.bookId
         send(socket, {
@@ -124,6 +156,10 @@ function startSignalingServer(port) {
           send(socket, { type: 'room:rejected', reason: 'Invite inválido ou expirado.' })
           return
         }
+        if (room.acl.size >= 10) {
+          send(socket, { type: 'room:rejected', reason: 'Esta sala atingiu o limite de 10 jogadores.' })
+          return
+        }
         client.role = 'player'
         client.bookId = room.bookId
 
@@ -147,6 +183,38 @@ function startSignalingServer(port) {
         } else {
           send(socket, { type: 'room:waiting-host', message: 'Aguardando narrador abrir a sala.' })
         }
+        return
+      }
+
+      if (payload.type === 'player:join-via-lobby-id') {
+        const room = rooms.get(payload.bookId)
+        if (!room || !room.hostClientId || !clients.get(room.hostClientId)) {
+          send(socket, { type: 'room:rejected', reason: 'Sala não encontrada ou narrador offline.' })
+          return
+        }
+        if (room.acl.size >= 10) {
+          send(socket, { type: 'room:rejected', reason: 'Esta sala atingiu o limite de 10 jogadores.' })
+          return
+        }
+        client.role = 'player'
+        client.bookId = room.bookId
+
+        const challengeBytes = new Uint8Array(24)
+        webcrypto.getRandomValues(challengeBytes)
+        const pendingId = randomToken('pending')
+        const pending = {
+          id: pendingId,
+          clientId,
+          bookId: room.bookId,
+          displayName: payload.displayName,
+          fingerprint: payload.fingerprint,
+          publicKeyJwk: payload.publicKeyJwk,
+          country: getCountryFromRequest(req),
+          challenge: Buffer.from(challengeBytes).toString('base64url'),
+          createdAt: Date.now(),
+        }
+        room.pending.set(pendingId, pending)
+        send(clients.get(room.hostClientId).socket, { type: 'room:pending-join', pending })
         return
       }
 
